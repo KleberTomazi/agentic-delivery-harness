@@ -1,0 +1,33 @@
+{"data": "2026-10-15T12:56:47-03:00", "fatia": "S01", "repo": "R1", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-17T10:09:06-03:00", "fatia": "S02", "repo": "R2", "resultado": "FAIL", "falhas": ["status", "comentarios", "segredos"]}
+{"data": "2026-10-17T10:09:44-03:00", "fatia": "S02", "repo": "R2", "resultado": "FAIL", "falhas": ["status", "comentarios", "segredos"]}
+{"data": "2026-10-17T15:28:34-03:00", "fatia": "S03", "repo": "R2", "resultado": "FAIL", "falhas": ["status", "comentarios", "segredos"]}
+{"data": "2026-10-18T19:05:45-03:00", "fatia": "S04", "repo": "R2", "resultado": "FAIL", "falhas": ["status", "comentarios", "segredos"]}
+{"data": "2026-10-18T19:18:32-03:00", "fatia": "S04", "repo": "R2", "resultado": "FAIL", "falhas": ["status", "comentarios", "segredos"]}
+{"data": "2026-10-19T09:38:20-03:00", "fatia": "S05", "repo": "R2", "resultado": "FAIL", "falhas": ["status", "comentarios", "segredos"]}
+{"data": "2026-10-21T13:02:13-03:00", "fatia": "S06", "repo": "R3", "resultado": "FAIL", "falhas": ["segredos"]}
+{"data": "2026-10-21T13:03:08-03:00", "fatia": "S06", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T13:42:14-03:00", "fatia": "S07", "repo": "R3", "resultado": "FAIL", "falhas": ["comentarios", "segredos"]}
+{"data": "2026-10-21T13:46:53-03:00", "fatia": "S07", "repo": "R3", "resultado": "FAIL", "falhas": ["comentarios", "segredos"]}
+{"data": "2026-10-21T13:48:15-03:00", "fatia": "S08", "repo": "R3", "resultado": "FAIL", "falhas": ["comentarios", "segredos"]}
+{"data": "2026-10-21T13:49:14-03:00", "fatia": "S08", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T14:16:22-03:00", "fatia": "S09", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T14:17:54-03:00", "fatia": "S09", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T14:46:00-03:00", "fatia": "S10", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T14:47:25-03:00", "fatia": "S10", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T17:21:43-03:00", "fatia": "S11", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T17:24:41-03:00", "fatia": "S11", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T17:40:58-03:00", "fatia": "S12", "repo": "R3", "resultado": "FAIL", "falhas": ["segredos"]}
+{"data": "2026-10-21T17:41:27-03:00", "fatia": "S12", "repo": "R3", "resultado": "FAIL", "falhas": ["segredos"]}
+{"data": "2026-10-21T18:02:23-03:00", "fatia": "S12", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T18:03:37-03:00", "fatia": "S13", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T21:07:37-03:00", "fatia": "S14", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T21:12:31-03:00", "fatia": "S15", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T21:40:58-03:00", "fatia": "S16", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T21:42:36-03:00", "fatia": "S16", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-21T21:46:39-03:00", "fatia": "S17", "repo": "R3", "resultado": "PASS", "falhas": []}
+{"data": "2026-10-23T19:44:11-03:00", "fatia": "S18", "repo": "R3", "resultado": "PASS", "falhas": [], "detalhes": {}}
+{"data": "2026-10-28T17:04:32-03:00", "fatia": "S19", "repo": "R3", "resultado": "FAIL", "falhas": ["status"], "detalhes": {"status": {"motivo": "3215 arquivo(s) fora da lista de esperados"}}}
+{"data": "2026-10-29T08:05:44-03:00", "fatia": "S20", "repo": "R2", "resultado": "FAIL", "falhas": ["status", "comentarios", "segredos"], "detalhes": {"status": {"motivo": "2 arquivo(s) fora da lista de esperados"}, "comentarios": {"motivo": "2 comentário(s) novo(s) em código"}, "segredos": {"motivo": "2 possível(is) segredo(s) nas linhas adicionadas"}}}
+{"data": "2026-10-30T09:29:50-03:00", "fatia": "S21", "repo": "R4", "resultado": "FAIL", "falhas": ["status"], "detalhes": {"status": {"motivo": "1 arquivo(s) fora da lista de esperados"}}}
+{"data": "2026-11-01T15:59:39-03:00", "fatia": "S22", "repo": "R2", "resultado": "FAIL", "falhas": ["status", "comentarios", "segredos"], "detalhes": {"status": {"motivo": "14 arquivo(s) fora da lista de esperados"}, "comentarios": {"motivo": "2 comentário(s) novo(s) em código"}, "segredos": {"motivo": "4 possível(is) segredo(s) nas linhas adicionadas"}}}
