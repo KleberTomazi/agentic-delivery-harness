@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""Gate determinístico de uma fatia (somente leitura no repo).
+"""Deterministic gate for one slice (read-only on the repo).
 
-Confere, nesta ordem:
-  a) git status: com --esperados, arquivo fora da lista reprova; sem, só lista.
-     Caminhos em obj/, bin/ e demais pastas de IGNORAR_DIRS não contam como fora da lista.
-  b) Comentário novo nas linhas adicionadas de código (.cs .ts .tsx .js .jsx .py .sql .css, <!-- em html).
-  c) Segredo nas linhas adicionadas (reporta arquivo:linha e tipo, nunca o valor).
-     Pula arquivos modelo (.exemplo .example .sample .template .dist, pastas Modelos/ e docs/);
-     em .md e .txt só valem as regras de bearer e connection string;
-     placeholder (vazio, ${...}, {{...}}, __x__, <...>, TROCAR, SUA_SENHA etc.) não reprova.
-  d) Build e teste, só com os comandos passados; nenhum comando é inventado.
+Checks, in this order:
+  a) files: git status. With --expected, a file outside the list fails; without it, files are only listed.
+     Paths under obj/, bin/ and the other IGNORED_DIRS do not count as outside the list.
+  b) comments: new comments in added code lines (.cs .ts .tsx .js .jsx .py .sql .css, <!-- in html).
+  c) secrets: possible secrets in added lines (reports file:line and type, never the value).
+     Skips template files (.exemplo .example .sample .template .dist, Modelos/ and docs/ folders);
+     in .md and .txt only the bearer and connection string rules apply;
+     placeholders (empty, ${...}, {{...}}, __x__, <...>, changeme, TROCAR, SUA_SENHA etc.) do not fail.
+  d) build and test: only with the commands given; no command is ever guessed.
 
-Uso: python3 -I ~/.claude/scripts/gate.py --repo <caminho> --fatia <nome>
-        [--esperados <arquivo.txt>] [--build "<cmd>"] [--test "<cmd>"] [--sem-build]
-        [--metricas <arquivo.jsonl>] [--retro-dir <pasta>]
-Saída: 0 se todos PASS, 1 se algum FAIL.
-Anexa uma linha em ~/.claude/metrics/fatias.jsonl (ou --metricas) com data, fatia, repo,
-resultado, falhas e detalhes (motivo e até 10 linhas por item reprovado, segredo sempre mascarado).
-Em FAIL, anexa uma linha por item reprovado em ~/.claude/retro/AAAA-MM.md (ou --retro-dir),
-criando o arquivo do mês com cabeçalho e tabela se não existir.
+Usage: python3 -I ~/.claude/scripts/gate.py --repo <path> --slice <name>
+        [--expected <file.txt>] [--build "<cmd>"] [--test "<cmd>"] [--no-build]
+        [--metrics <file.jsonl>] [--retro-dir <folder>]
+Exit code: 0 if every check passes, 1 if any check fails.
+Appends one line to ~/.claude/metrics/slices.jsonl (or --metrics) with date, slice, repo,
+result, failures and details (reason and up to 10 lines per failed check, secrets always masked).
+On FAIL, appends one row per failed check to ~/.claude/retro/YYYY-MM.md (or --retro-dir),
+creating the month file with a header and table if it does not exist.
 """
 import argparse
 import json
@@ -29,51 +29,51 @@ from datetime import datetime
 from pathlib import Path
 
 HOME = Path.home()
-METRICAS = HOME / ".claude" / "metrics" / "fatias.jsonl"
+METRICS = HOME / ".claude" / "metrics" / "slices.jsonl"
 RETRO_DIR = HOME / ".claude" / "retro"
-MAX_LINHAS_DETALHE = 10
+MAX_DETAIL_LINES = 10
 TIMEOUT_S = 600
-TAMANHO_MAX_TEXTO = 80
-LIMITE_BYTES_ARQUIVO = 2_000_000
+MAX_TEXT_LEN = 80
+MAX_FILE_BYTES = 2_000_000
 
-EXT_CODIGO = {".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".sql", ".css"}
-EXT_HTML = {".html", ".htm"}
-IGNORAR_DIRS = {"node_modules", ".git", "obj", "bin", "dist", "build", ".vs", ".idea"}
+CODE_EXT = {".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".sql", ".css"}
+HTML_EXT = {".html", ".htm"}
+IGNORED_DIRS = {"node_modules", ".git", "obj", "bin", "dist", "build", ".vs", ".idea"}
 
-DIRETIVAS = ("#region", "#endregion", "#if", "#elif", "#else", "#endif", "#pragma",
-             "#nullable", "#define", "#undef", "#line", "#error", "#warning", "#!", "# -*-")
-RX_LICENCA = re.compile(r"(?i)copyright|licen[cs]|all rights reserved|spdx-")
+DIRECTIVES = ("#region", "#endregion", "#if", "#elif", "#else", "#endif", "#pragma",
+              "#nullable", "#define", "#undef", "#line", "#error", "#warning", "#!", "# -*-")
+RX_LICENSE = re.compile(r"(?i)copyright|licen[cs]|all rights reserved|spdx-")
 
 RX_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
-SEGREDOS_CHAVE = [
-    ("senha/password", re.compile(r"(?i)\b(senha|password|passwd|pwd)\b[\"']?\s*[:=]\s*(.*)$")),
+KEY_SECRETS = [
+    ("password", re.compile(r"(?i)\b(senha|password|passwd|pwd)\b[\"']?\s*[:=]\s*(.*)$")),
     ("token/apikey/secret", re.compile(r"(?i)\b(token|api[_-]?key|secret|client[_-]?secret)\b[\"']?\s*[:=]\s*(.*)$")),
 ]
 RX_BEARER = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9_\-\.=]{20,})")
 RX_CONN = re.compile(r"(?i)\bpassword=([^;\"'\s]{3,})")
 RX_LITERAL = re.compile(r"""^["']([^"']{4,})["']""")
 RX_PLACEHOLDER = re.compile(r"(?i)^$|^[<{$%@]|^__.*__$|^[\*xX]{3,}$|^(string|null|none|true|false|senha|password|placeholder|changeme|xxx+)$")
-RX_PLACEHOLDER_PALAVRA = re.compile(r"(?i)trocar|troque|sua_senha|seu_token|informar|preencher")
-SUFIXOS_MODELO = (".exemplo", ".example", ".sample", ".template", ".dist")
-PASTAS_MODELO = ("/Modelos/", "/modelos/", "/docs/")
-EXT_TEXTO = {".md", ".txt"}
+RX_PLACEHOLDER_WORD = re.compile(r"(?i)trocar|troque|sua_senha|seu_token|informar|preencher")
+TEMPLATE_SUFFIXES = (".exemplo", ".example", ".sample", ".template", ".dist")
+TEMPLATE_FOLDERS = ("/Modelos/", "/modelos/", "/docs/")
+TEXT_EXT = {".md", ".txt"}
 
 
-class Item:
-    def __init__(self, nome):
-        self.nome = nome
+class Check:
+    def __init__(self, name):
+        self.name = name
         self.ok = True
-        self.motivo = ""
-        self.detalhes = []
+        self.reason = ""
+        self.details = []
 
-    def falha(self, motivo):
+    def fail(self, reason):
         self.ok = False
-        self.motivo = motivo
+        self.reason = reason
 
-    def imprimir(self):
-        print(f"{'PASS' if self.ok else 'FAIL'}  {self.nome}: {self.motivo}")
-        for d in self.detalhes:
+    def show(self):
+        print(f"{'PASS' if self.ok else 'FAIL'}  {self.name}: {self.reason}")
+        for d in self.details:
             print(f"      {d}")
 
 
@@ -81,156 +81,156 @@ def git(repo, *args):
     r = subprocess.run(["git", "-c", "core.quotePath=false", "-C", str(repo), *args],
                        capture_output=True, text=True, errors="replace")
     if r.returncode != 0:
-        raise RuntimeError(r.stderr.strip().splitlines()[-1] if r.stderr.strip() else f"git {args[0]} falhou")
+        raise RuntimeError(r.stderr.strip().splitlines()[-1] if r.stderr.strip() else f"git {args[0]} failed")
     return r.stdout
 
 
-def status_repo(repo):
-    saida = git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
-    campos = saida.split("\0")
-    alterados, nao_rastreados = [], []
+def repo_status(repo):
+    output = git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+    fields = output.split("\0")
+    modified, untracked = [], []
     i = 0
-    while i < len(campos):
-        entrada = campos[i]
+    while i < len(fields):
+        entry = fields[i]
         i += 1
-        if not entrada:
+        if not entry:
             continue
-        codigo, caminho = entrada[:2], entrada[3:]
-        if "R" in codigo or "C" in codigo:
+        code, path = entry[:2], entry[3:]
+        if "R" in code or "C" in code:
             i += 1
-        if codigo == "??":
-            nao_rastreados.append(caminho)
+        if code == "??":
+            untracked.append(path)
         else:
-            alterados.append(caminho)
-    return alterados, nao_rastreados
+            modified.append(path)
+    return modified, untracked
 
 
-def ler_esperados(caminho):
-    linhas = Path(caminho).expanduser().read_text(encoding="utf-8", errors="replace").splitlines()
-    esperados = []
-    for l in linhas:
+def read_expected(path):
+    lines = Path(path).expanduser().read_text(encoding="utf-8", errors="replace").splitlines()
+    expected = []
+    for l in lines:
         l = l.strip()
         if not l or l.startswith("#"):
             continue
         if l.startswith("./"):
             l = l[2:]
-        esperados.append(l)
-    return esperados
+        expected.append(l)
+    return expected
 
 
-def esperado(caminho, esperados):
-    for e in esperados:
-        if caminho == e or (e.endswith("/") and caminho.startswith(e)):
+def is_expected(path, expected):
+    for e in expected:
+        if path == e or (e.endswith("/") and path.startswith(e)):
             return True
     return False
 
 
-def em_pasta_ignorada(caminho):
-    return any(parte in IGNORAR_DIRS for parte in Path(caminho).parts)
+def in_ignored_dir(path):
+    return any(part in IGNORED_DIRS for part in Path(path).parts)
 
 
-def checar_status(repo, args):
-    item = Item("status")
-    alterados, nao_rastreados = status_repo(repo)
-    todos = alterados + nao_rastreados
-    if not todos:
-        item.motivo = "working tree limpo"
-        return item, alterados, nao_rastreados
-    if args.esperados:
-        esperados = ler_esperados(args.esperados)
-        ignorados = [c for c in todos if em_pasta_ignorada(c) and not esperado(c, esperados)]
-        conferidos = [c for c in todos if c not in ignorados]
-        fora = [c for c in conferidos if not esperado(c, esperados)]
-        faltando = [e for e in esperados if not e.endswith("/") and e not in todos]
-        if fora:
-            item.falha(f"{len(fora)} arquivo(s) fora da lista de esperados")
-            item.detalhes += [f"fora da lista: {c}" for c in fora]
+def check_files(repo, args):
+    check = Check("files")
+    modified, untracked = repo_status(repo)
+    everything = modified + untracked
+    if not everything:
+        check.reason = "working tree clean"
+        return check, modified, untracked
+    if args.expected:
+        expected = read_expected(args.expected)
+        ignored = [c for c in everything if in_ignored_dir(c) and not is_expected(c, expected)]
+        checked = [c for c in everything if c not in ignored]
+        outside = [c for c in checked if not is_expected(c, expected)]
+        missing = [e for e in expected if not e.endswith("/") and e not in everything]
+        if outside:
+            check.fail(f"{len(outside)} file(s) outside the expected list")
+            check.details += [f"outside the list: {c}" for c in outside]
         else:
-            item.motivo = f"{len(conferidos)} arquivo(s), todos na lista de esperados"
-        item.detalhes += [f"esperado e sem alteração: {e}" for e in faltando]
-        if ignorados:
-            item.detalhes.append(f"{len(ignorados)} caminho(s) em obj/bin ignorado(s)")
+            check.reason = f"{len(checked)} file(s), all in the expected list"
+        check.details += [f"expected but unchanged: {e}" for e in missing]
+        if ignored:
+            check.details.append(f"{len(ignored)} path(s) under obj/bin ignored")
     else:
-        item.motivo = f"{len(alterados)} alterado(s), {len(nao_rastreados)} não rastreado(s) (sem --esperados, só listando)"
-        item.detalhes += [f"alterado: {c}" for c in alterados]
-        item.detalhes += [f"não rastreado: {c}" for c in nao_rastreados]
-    return item, alterados, nao_rastreados
+        check.reason = f"{len(modified)} modified, {len(untracked)} untracked (no --expected, listing only)"
+        check.details += [f"modified: {c}" for c in modified]
+        check.details += [f"untracked: {c}" for c in untracked]
+    return check, modified, untracked
 
 
-def linhas_do_diff(texto):
-    adicionadas = {}
-    caminho, n = None, 0
-    for linha in texto.splitlines():
-        if linha.startswith("+++ "):
-            alvo = linha[4:]
-            caminho = None if alvo == "/dev/null" else (alvo[2:] if alvo.startswith("b/") else alvo)
+def diff_lines(text):
+    added = {}
+    path, n = None, 0
+    for line in text.splitlines():
+        if line.startswith("+++ "):
+            target = line[4:]
+            path = None if target == "/dev/null" else (target[2:] if target.startswith("b/") else target)
             continue
-        if linha.startswith("--- ") or linha.startswith("diff --git") or linha.startswith("\\ "):
+        if line.startswith("--- ") or line.startswith("diff --git") or line.startswith("\\ "):
             continue
-        m = RX_HUNK.match(linha)
+        m = RX_HUNK.match(line)
         if m:
             n = int(m.group(1))
             continue
-        if caminho is None:
+        if path is None:
             continue
-        if linha.startswith("+"):
-            adicionadas.setdefault(caminho, []).append((n, linha[1:]))
+        if line.startswith("+"):
+            added.setdefault(path, []).append((n, line[1:]))
             n += 1
-        elif linha.startswith(" "):
+        elif line.startswith(" "):
             n += 1
-    return adicionadas
+    return added
 
 
-def linhas_nao_rastreadas(repo, caminhos):
-    adicionadas = {}
-    for c in caminhos:
+def untracked_lines(repo, paths):
+    added = {}
+    for c in paths:
         p = repo / c
-        if any(parte in IGNORAR_DIRS for parte in Path(c).parts):
+        if any(part in IGNORED_DIRS for part in Path(c).parts):
             continue
-        if not p.is_file() or p.stat().st_size > LIMITE_BYTES_ARQUIVO:
+        if not p.is_file() or p.stat().st_size > MAX_FILE_BYTES:
             continue
-        bruto = p.read_bytes()
-        if b"\0" in bruto[:8000]:
+        raw = p.read_bytes()
+        if b"\0" in raw[:8000]:
             continue
-        texto = bruto.decode("utf-8", errors="replace")
-        adicionadas[c] = list(enumerate(texto.splitlines(), 1))
-    return adicionadas
+        text = raw.decode("utf-8", errors="replace")
+        added[c] = list(enumerate(text.splitlines(), 1))
+    return added
 
 
-def juntar(*dicts):
+def merge(*dicts):
     total = {}
     for d in dicts:
-        for caminho, linhas in d.items():
-            vistas = set(total.get(caminho, []))
-            total[caminho] = sorted(vistas | set(linhas))
+        for path, lines in d.items():
+            seen = set(total.get(path, []))
+            total[path] = sorted(seen | set(lines))
     return total
 
 
-def coletar_adicionadas(repo, nao_rastreados):
-    unstaged = linhas_do_diff(git(repo, "diff", "--no-color", "--no-ext-diff", "-U0"))
-    staged = linhas_do_diff(git(repo, "diff", "--cached", "--no-color", "--no-ext-diff", "-U0"))
-    novos = linhas_nao_rastreadas(repo, nao_rastreados)
-    return juntar(unstaged, staged, novos)
+def collect_added(repo, untracked):
+    unstaged = diff_lines(git(repo, "diff", "--no-color", "--no-ext-diff", "-U0"))
+    staged = diff_lines(git(repo, "diff", "--cached", "--no-color", "--no-ext-diff", "-U0"))
+    new = untracked_lines(repo, untracked)
+    return merge(unstaged, staged, new)
 
 
-def ignorar_comentario(s):
-    baixo = s.lower()
-    if baixo.startswith(DIRETIVAS):
+def skip_comment(s):
+    low = s.lower()
+    if low.startswith(DIRECTIVES):
         return True
-    if baixo.startswith("///") and "<reference" in baixo:
+    if low.startswith("///") and "<reference" in low:
         return True
-    return bool(RX_LICENCA.search(baixo))
+    return bool(RX_LICENSE.search(low))
 
 
-def eh_comentario(ext, texto):
-    s = texto.strip()
-    if not s or ignorar_comentario(s):
+def is_comment(ext, text):
+    s = text.strip()
+    if not s or skip_comment(s):
         return False
     if ext == ".py":
         return s.startswith("#")
     if ext == ".sql":
         return s.startswith(("--", "/*", "* ", "*/")) or s == "*"
-    if ext in EXT_HTML:
+    if ext in HTML_EXT:
         return s.startswith("<!--")
     if ext == ".css" and "{" in s:
         return False
@@ -239,233 +239,233 @@ def eh_comentario(ext, texto):
     return s.startswith(("//", "/*", "{/*", "* ", "*/")) or s == "*"
 
 
-def resumo_linha(texto):
-    s = texto.strip()
-    if len(s) > TAMANHO_MAX_TEXTO:
-        return "(linha longa, texto omitido)"
+def short_line(text):
+    s = text.strip()
+    if len(s) > MAX_TEXT_LEN:
+        return "(long line, text omitted)"
     return s
 
 
-def checar_comentarios(adicionadas):
-    item = Item("comentarios")
-    achados = []
-    for caminho, linhas in adicionadas.items():
-        ext = Path(caminho).suffix.lower()
-        if ext not in EXT_CODIGO and ext not in EXT_HTML:
+def check_comments(added):
+    check = Check("comments")
+    found = []
+    for path, lines in added.items():
+        ext = Path(path).suffix.lower()
+        if ext not in CODE_EXT and ext not in HTML_EXT:
             continue
-        for n, texto in linhas:
-            if eh_comentario(ext, texto):
-                achados.append(f"{caminho}:{n}  {resumo_linha(texto)}")
-    if achados:
-        item.falha(f"{len(achados)} comentário(s) novo(s) em código")
-        item.detalhes = achados
+        for n, text in lines:
+            if is_comment(ext, text):
+                found.append(f"{path}:{n}  {short_line(text)}")
+    if found:
+        check.fail(f"{len(found)} new comment(s) in code")
+        check.details = found
     else:
-        item.motivo = "nenhum comentário novo em código"
-    return item
+        check.reason = "no new comments in code"
+    return check
 
 
-def eh_placeholder(valor):
-    valor = valor.strip().strip("\"'")
-    return bool(RX_PLACEHOLDER.match(valor) or RX_PLACEHOLDER_PALAVRA.search(valor))
+def is_placeholder(value):
+    value = value.strip().strip("\"'")
+    return bool(RX_PLACEHOLDER.match(value) or RX_PLACEHOLDER_WORD.search(value))
 
 
-def valor_suspeito(resto, ext):
-    resto = resto.strip()
-    m = RX_LITERAL.match(resto)
+def suspicious_value(rest, ext):
+    rest = rest.strip()
+    m = RX_LITERAL.match(rest)
     if m:
-        valor = m.group(1)
-    elif ext in EXT_CODIGO:
+        value = m.group(1)
+    elif ext in CODE_EXT:
         return False
     else:
-        valor = resto.split()[0] if resto.split() else ""
-        valor = valor.rstrip(",;")
-        if len(valor) < 4:
+        value = rest.split()[0] if rest.split() else ""
+        value = value.rstrip(",;")
+        if len(value) < 4:
             return False
-    return not eh_placeholder(valor)
+    return not is_placeholder(value)
 
 
-def tipos_segredo(texto, ext):
-    tipos = []
-    if ext not in EXT_TEXTO:
-        for nome, rx in SEGREDOS_CHAVE:
-            m = rx.search(texto)
-            if m and valor_suspeito(m.group(2), ext):
-                tipos.append(nome)
-    m = RX_BEARER.search(texto)
-    if m and not eh_placeholder(m.group(1)):
-        tipos.append("bearer")
-    m = RX_CONN.search(texto)
-    if m and not eh_placeholder(m.group(1)):
-        tipos.append("connection string")
-    return tipos
+def secret_types(text, ext):
+    types = []
+    if ext not in TEXT_EXT:
+        for name, rx in KEY_SECRETS:
+            m = rx.search(text)
+            if m and suspicious_value(m.group(2), ext):
+                types.append(name)
+    m = RX_BEARER.search(text)
+    if m and not is_placeholder(m.group(1)):
+        types.append("bearer")
+    m = RX_CONN.search(text)
+    if m and not is_placeholder(m.group(1)):
+        types.append("connection string")
+    return types
 
 
-def arquivo_modelo(caminho):
-    if caminho.lower().endswith(SUFIXOS_MODELO):
+def is_template(path):
+    if path.lower().endswith(TEMPLATE_SUFFIXES):
         return True
-    completo = "/" + caminho
-    return any(p in completo for p in PASTAS_MODELO)
+    full = "/" + path
+    return any(p in full for p in TEMPLATE_FOLDERS)
 
 
-def checar_segredos(adicionadas):
-    item = Item("segredos")
-    achados = []
-    for caminho, linhas in adicionadas.items():
-        ext = Path(caminho).suffix.lower()
-        if any(parte in caminho.lower() for parte in ("/i18n/", "/translations/", "/locales/")):
+def check_secrets(added):
+    check = Check("secrets")
+    found = []
+    for path, lines in added.items():
+        ext = Path(path).suffix.lower()
+        if any(part in path.lower() for part in ("/i18n/", "/translations/", "/locales/")):
             continue
-        if arquivo_modelo(caminho):
+        if is_template(path):
             continue
-        for n, texto in linhas:
-            tipos = tipos_segredo(texto, ext)
-            if tipos:
-                achados.append(f"{caminho}:{n}  possível segredo ({', '.join(tipos)}), valor omitido")
-    if achados:
-        item.falha(f"{len(achados)} possível(is) segredo(s) nas linhas adicionadas")
-        item.detalhes = achados
+        for n, text in lines:
+            types = secret_types(text, ext)
+            if types:
+                found.append(f"{path}:{n}  possible secret ({', '.join(types)}), value omitted")
+    if found:
+        check.fail(f"{len(found)} possible secret(s) in added lines")
+        check.details = found
     else:
-        item.motivo = "nenhum segredo nas linhas adicionadas"
-    return item
+        check.reason = "no secrets in added lines"
+    return check
 
 
-def ultima_linha_util(saida):
-    linhas = [l.strip() for l in saida.splitlines() if l.strip()]
-    for l in reversed(linhas):
+def last_useful_line(output):
+    lines = [l.strip() for l in output.splitlines() if l.strip()]
+    for l in reversed(lines):
         if re.search(r"(?i)\berror\b|\berro\b|failed|falh|exception", l):
             return l[:200]
-    return linhas[-1][:200] if linhas else "sem saída"
+    return lines[-1][:200] if lines else "no output"
 
 
-def rodar_comando(nome, cmd, repo):
-    item = Item(nome)
+def run_command(name, cmd, repo):
+    check = Check(name)
     try:
         r = subprocess.run(cmd, shell=True, cwd=str(repo), capture_output=True,
                            text=True, errors="replace", timeout=TIMEOUT_S)
     except subprocess.TimeoutExpired:
-        item.falha(f"timeout de {TIMEOUT_S} s")
-        return item
+        check.fail(f"timeout after {TIMEOUT_S} s")
+        return check
     if r.returncode != 0:
-        item.falha(f"exit {r.returncode}")
-        item.detalhes = [ultima_linha_util(r.stderr + "\n" + r.stdout)]
+        check.fail(f"exit {r.returncode}")
+        check.details = [last_useful_line(r.stderr + "\n" + r.stdout)]
     else:
-        item.motivo = f"ok ({cmd})"
-    return item
+        check.reason = f"ok ({cmd})"
+    return check
 
 
-def checar_build_teste(repo, args):
-    itens = []
-    if args.sem_build:
-        i = Item("build/teste")
-        i.motivo = "pulado (--sem-build)"
-        return [i]
+def check_build_test(repo, args):
+    checks = []
+    if args.no_build:
+        c = Check("build/test")
+        c.reason = "skipped (--no-build)"
+        return [c]
     if not args.build and not args.test:
-        i = Item("build/teste")
-        i.motivo = "build/teste não informados"
-        return [i]
+        c = Check("build/test")
+        c.reason = "no build or test command given"
+        return [c]
     if args.build:
-        itens.append(rodar_comando("build", args.build, repo))
+        checks.append(run_command("build", args.build, repo))
     if args.test:
-        itens.append(rodar_comando("teste", args.test, repo))
-    return itens
+        checks.append(run_command("test", args.test, repo))
+    return checks
 
 
-def repo_curto(repo):
+def short_repo(repo):
     try:
         return "~/" + repo.relative_to(HOME).as_posix()
     except ValueError:
         return repo.as_posix()
 
 
-def registrar(repo, fatia, itens, metricas):
-    reprovados = [i for i in itens if not i.ok]
-    registro = {
-        "data": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "fatia": fatia,
-        "repo": repo_curto(repo),
-        "resultado": "FAIL" if reprovados else "PASS",
-        "falhas": [i.nome for i in reprovados],
-        "detalhes": {i.nome: {"motivo": i.motivo, "linhas": i.detalhes[:MAX_LINHAS_DETALHE]}
-                     for i in reprovados},
+def record(repo, slice_name, checks, metrics):
+    failed = [c for c in checks if not c.ok]
+    entry = {
+        "date": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "slice": slice_name,
+        "repo": short_repo(repo),
+        "result": "FAIL" if failed else "PASS",
+        "failures": [c.name for c in failed],
+        "details": {c.name: {"reason": c.reason, "lines": c.details[:MAX_DETAIL_LINES]}
+                    for c in failed},
     }
-    metricas.parent.mkdir(parents=True, exist_ok=True)
-    with metricas.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(registro, ensure_ascii=False) + "\n")
+    metrics.parent.mkdir(parents=True, exist_ok=True)
+    with metrics.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def celula(texto):
-    return " ".join(texto.replace("|", "/").split())
+def cell(text):
+    return " ".join(text.replace("|", "/").split())
 
 
-def cabecalho_retro(mes):
-    return (f"# retro {mes}\n\n"
-            "Reprovações relevantes do gate e dos revisores neste mês. "
-            "Regra sugerida só vira regra com OK do Kleber (ver README.md).\n\n"
-            "| data | fatia | causa | regra sugerida | status |\n"
+def retro_header(month):
+    return (f"# retro {month}\n\n"
+            "Relevant rejections from the gate and the reviewers this month. "
+            "A suggested rule only becomes a rule with the owner's OK (see README.md).\n\n"
+            "| date | slice | cause | suggested rule | status |\n"
             "|------|-------|-------|----------------|--------|\n")
 
 
-def anexar_retro(fatia, itens, retro_dir):
-    reprovados = [i for i in itens if not i.ok]
-    if not reprovados:
+def append_retro(slice_name, checks, retro_dir):
+    failed = [c for c in checks if not c.ok]
+    if not failed:
         return
-    agora = datetime.now()
-    arquivo = retro_dir / f"{agora:%Y-%m}.md"
-    linhas = []
-    for i in reprovados:
-        causa = f"gate: {i.nome}: {i.motivo}"
-        if i.detalhes:
-            causa += f" ({i.detalhes[0]})"
-        linhas.append(f"| {agora:%Y-%m-%d} | {celula(fatia)} | {celula(causa)} | | sugerida |")
+    now = datetime.now()
+    month_file = retro_dir / f"{now:%Y-%m}.md"
+    rows = []
+    for c in failed:
+        cause = f"gate: {c.name}: {c.reason}"
+        if c.details:
+            cause += f" ({c.details[0]})"
+        rows.append(f"| {now:%Y-%m-%d} | {cell(slice_name)} | {cell(cause)} | | suggested |")
     retro_dir.mkdir(parents=True, exist_ok=True)
-    atual = arquivo.read_text(encoding="utf-8") if arquivo.exists() else cabecalho_retro(f"{agora:%Y-%m}")
-    arquivo.write_text(atual.rstrip("\n") + "\n" + "\n".join(linhas) + "\n", encoding="utf-8")
-    print(f"retro: {len(linhas)} linha(s) anexada(s) em {arquivo}")
+    current = month_file.read_text(encoding="utf-8") if month_file.exists() else retro_header(f"{now:%Y-%m}")
+    month_file.write_text(current.rstrip("\n") + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
+    print(f"retro: {len(rows)} row(s) appended to {month_file}")
 
 
 def main():
-    ap = argparse.ArgumentParser(description="gate determinístico de uma fatia")
-    ap.add_argument("--repo", required=True)
-    ap.add_argument("--fatia", required=True)
-    ap.add_argument("--esperados")
-    ap.add_argument("--build")
-    ap.add_argument("--test")
-    ap.add_argument("--sem-build", action="store_true")
-    ap.add_argument("--metricas", default=str(METRICAS))
-    ap.add_argument("--retro-dir", default=str(RETRO_DIR))
+    ap = argparse.ArgumentParser(description="deterministic gate for one slice")
+    ap.add_argument("--repo", required=True, help="path to the git repository to check")
+    ap.add_argument("--slice", required=True, help="slice name recorded in metrics and retro")
+    ap.add_argument("--expected", help="text file with the expected changed paths, one per line")
+    ap.add_argument("--build", help="build command to run in the repo root")
+    ap.add_argument("--test", help="test command to run in the repo root")
+    ap.add_argument("--no-build", action="store_true", help="skip build and test")
+    ap.add_argument("--metrics", default=str(METRICS), help="JSONL file that receives one line per run")
+    ap.add_argument("--retro-dir", default=str(RETRO_DIR), help="folder for the monthly retro files")
     args = ap.parse_args()
 
     repo = Path(args.repo).expanduser().resolve()
     if not repo.is_dir():
-        print(f"FAIL  repo: pasta não existe: {repo}")
+        print(f"FAIL  repo: folder does not exist: {repo}")
         return 1
     try:
-        raiz = git(repo, "rev-parse", "--show-toplevel").strip()
+        root = git(repo, "rev-parse", "--show-toplevel").strip()
     except RuntimeError as e:
-        print(f"FAIL  repo: não é repositório git ({e})")
+        print(f"FAIL  repo: not a git repository ({e})")
         return 1
-    repo = Path(raiz)
+    repo = Path(root)
 
-    print(f"gate: fatia '{args.fatia}' em {repo_curto(repo)}")
-    itens = []
+    print(f"gate: slice '{args.slice}' in {short_repo(repo)}")
+    checks = []
     try:
-        item_status, alterados, nao_rastreados = checar_status(repo, args)
-        itens.append(item_status)
-        adicionadas = coletar_adicionadas(repo, nao_rastreados)
-        itens.append(checar_comentarios(adicionadas))
-        itens.append(checar_segredos(adicionadas))
-        itens += checar_build_teste(repo, args)
+        files_check, modified, untracked = check_files(repo, args)
+        checks.append(files_check)
+        added = collect_added(repo, untracked)
+        checks.append(check_comments(added))
+        checks.append(check_secrets(added))
+        checks += check_build_test(repo, args)
     except RuntimeError as e:
-        i = Item("git")
-        i.falha(str(e))
-        itens.append(i)
+        c = Check("git")
+        c.fail(str(e))
+        checks.append(c)
 
-    for i in itens:
-        i.imprimir()
-    falhas = [i.nome for i in itens if not i.ok]
-    print(f"resultado: {'FAIL (' + ', '.join(falhas) + ')' if falhas else 'PASS'}")
-    registrar(repo, args.fatia, itens, Path(args.metricas).expanduser())
-    anexar_retro(args.fatia, itens, Path(args.retro_dir).expanduser())
-    return 1 if falhas else 0
+    for c in checks:
+        c.show()
+    failures = [c.name for c in checks if not c.ok]
+    print(f"result: {'FAIL (' + ', '.join(failures) + ')' if failures else 'PASS'}")
+    record(repo, args.slice, checks, Path(args.metrics).expanduser())
+    append_retro(args.slice, checks, Path(args.retro_dir).expanduser())
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

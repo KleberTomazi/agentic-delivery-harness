@@ -1,10 +1,26 @@
 # retro
 
-Ciclo de melhoria do harness, alimentado pelas reprovações.
+Improvement loop of the harness, fed by rejections.
 
-1. O `gate.py` ou um revisor (qa-tester, sql-reviewer, ticket-reviewer) reprova uma fatia.
-2. O `gate.py` já anexa sozinho uma linha em `retro/AAAA-MM.md` por item reprovado (data, fatia, causa, status sugerida). Reprovação de revisor (qa-tester, sql-reviewer, ticket-reviewer) entra à mão no mesmo formato. Linha que for ruído ou erro de uso: marcar status recusada, não apagar.
-3. Regra sugerida é só sugestão. Só entra em `~/.claude/CLAUDE.md`, num agente de `~/.claude/agents/` ou numa skill com OK explícito do Kleber.
-4. Na virada do mês, ler o arquivo, agrupar causas repetidas e levar ao Kleber o que vale virar regra. `metricas.py` mostra os motivos de FAIL mais comuns pra apoiar essa leitura.
+1. `scripts/gate.py` or a reviewer (qa-tester, sql-reviewer, ticket-reviewer) rejects a slice.
+2. The gate appends one row per failed check to `retro/YYYY-MM.md` on its own (date, slice, cause, status suggested). A reviewer rejection is added by hand in the same format. A row that turns out to be noise or misuse is marked refused, never deleted.
+3. A suggested rule is only a suggestion. It goes into `~/.claude/CLAUDE.md`, into an agent in `~/.claude/agents/` or into a skill only with the owner's explicit OK, and its status becomes approved.
+4. At the turn of the month, read the file, group repeated causes and bring to the owner what is worth becoming a rule. `scripts/metrics.py` shows the most common FAIL reasons to support that reading.
 
-Formato de cada arquivo mensal: tabela com colunas data, fatia, causa, regra sugerida, status (sugerida, aprovada, recusada). Uma linha por reprovação. Sem valor de segredo, sem dado de cliente.
+## Format
+
+One file per month, named `YYYY-MM.md`, with one table and one row per rejection:
+
+```
+| date | slice | cause | suggested rule | status |
+|------|-------|-------|----------------|--------|
+| 2026-11-01 | S22 | gate: files: 14 file(s) outside the expected list (outside the list: Program.cs) | | suggested |
+```
+
+Status values:
+
+1. suggested: written by the gate or by hand, waiting for the monthly review.
+2. approved: the owner said OK and the rule now lives in the instructions, an agent or a skill.
+3. refused: noise, misuse or a rule the owner declined. The row stays as history.
+
+No secret values and no customer data in any row.

@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "agentic-delivery-harness"
+authors:
+  - family-names: "Tomazi"
+    given-names: "Kleber"
+    orcid: "https://orcid.org/0009-0001-4976-4920"
+    affiliation: "KLT Development Ltda."
+license: MIT
+repository-code: "https://github.com/KleberTomazi/agentic-delivery-harness"
+date-released: 2026-11-03
+version: 0.1.0

@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Lint do harness de trabalho do Claude (somente leitura).
+"""Lint for the Claude working harness (read-only).
 
-Confere:
-  1. Caminhos citados em CLAUDE.md existem no disco (refs git origin/... e
-     os tokens obj/ e bin/ não são tratados como caminho).
-  2. Teto de linhas de cada CLAUDE.md (hubs e produtos têm teto declarado).
-  3. Memória: links do MEMORY.md apontam para arquivos existentes,
-     arquivos sem entrada no índice (órfãos), [[links]] quebrados,
-     e frontmatter válido. Mesmo arquivo .md (ou mesmo name: do frontmatter)
-     em mais de uma pasta projects/*/memory/ vira AVISO de memória duplicada.
-  4. Varredura de credenciais em CLAUDE.md e memória (só reporta
-     arquivo:linha e o tipo do padrão, nunca o valor).
+Checks:
+  1. Paths quoted in CLAUDE.md files exist on disk (git refs like origin/... and
+     the obj/ and bin/ tokens are not treated as paths).
+  2. Line ceiling of each CLAUDE.md (hubs and products have a declared ceiling).
+  3. Memory: MEMORY.md links point to existing files, files without an index
+     entry (orphans), broken [[links]], and valid frontmatter. The same .md file
+     (or the same frontmatter name:) in more than one projects/*/memory/ folder
+     is reported as a duplicated memory WARNING.
+  4. Credential scan in CLAUDE.md and memory files (reports only
+     file:line and the pattern type, never the value).
 
-Uso: python3 ~/.claude/scripts/harness-lint.py [--raiz ~/Projects]
-Saída: 0 se não há erros, 1 se há erros. AVISO não reprova.
+Usage: python3 ~/.claude/scripts/harness-lint.py [--root ~/Projects]
+Exit code: 0 if there are no errors, 1 if there are errors. A WARNING does not fail.
 """
 import argparse
 import os
@@ -25,9 +25,8 @@ HOME = Path.home()
 CLAUDE_HOME = HOME / ".claude"
 MEMORY_ROOT = CLAUDE_HOME / "projects"
 
-# teto de linhas por arquivo (caminho relativo ao raiz de projetos ou absoluto)
 TETOS = {
-    "CLAUDE.md": None,  # padrão: sem teto, só aviso acima de AVISO_LINHAS
+    "CLAUDE.md": None,
     "work/CLAUDE.md": 40,
     "personal/CLAUDE.md": 40,
     "CLAUDE.md@raiz": 25,
@@ -39,7 +38,7 @@ EXT_CAMINHO = (".md", ".txt", ".csv", ".sh", ".py", ".json", ".html", ".bpmn",
                ".png", ".docx", ".sql", ".yml", ".yaml", ".ps1", ".cs", ".ts", ".tsx")
 
 PADROES_CRED = [
-    ("senha/password", re.compile(r"(?i)\b(senha|password|passwd|pwd)\s*[:=]\s*\S{4,}")),
+    ("password", re.compile(r"(?i)\b(senha|password|passwd|pwd)\s*[:=]\s*\S{4,}")),
     ("token/PAT/apikey", re.compile(r"(?i)\b(token|api[_-]?key|secret|pat)\s*[:=]\s*[A-Za-z0-9_\-\.]{12,}")),
     ("bearer", re.compile(r"(?i)bearer\s+[A-Za-z0-9_\-\.]{12,}")),
     ("connection string", re.compile(r"(?i)password=[^;\s]{3,}")),
@@ -95,7 +94,7 @@ IGNORAR_DIRS = {"node_modules", ".git", "obj", "bin", "dist", "build"}
 
 
 def existe_em_ancestrais(tok, arq, raiz):
-    """Caminho relativo: procura a partir da pasta do CLAUDE.md e sobe até a raiz."""
+    """Relative path: search from the CLAUDE.md folder up to the root."""
     for pasta in [arq.parent, *arq.parent.parents]:
         if (pasta / tok.rstrip("/")).exists():
             return True
@@ -105,7 +104,7 @@ def existe_em_ancestrais(tok, arq, raiz):
 
 
 def nome_existe_na_arvore(nome, base):
-    """Caminho citado pelo nome ou pelo fim: procura arquivo/pasta em qualquer subpasta (até 6 níveis)."""
+    """Path quoted by name or by its tail: search for a file or folder in any subfolder (up to 6 levels)."""
     base_prof = len(base.parts)
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d not in IGNORAR_DIRS]
@@ -120,7 +119,6 @@ def nome_existe_na_arvore(nome, base):
 
 def checar_caminhos(arq, rel, raiz, rep):
     texto = arq.read_text(encoding="utf-8", errors="replace")
-    # caminhos dentro de crases; ignora URLs, placeholders, comandos, globs e alias
     for m in re.finditer(r"`([^`\n]+)`", texto):
         tok = m.group(1).strip()
         if " " in tok or tok.startswith(("http", "$", "-", "~/", "@")):
@@ -134,26 +132,25 @@ def checar_caminhos(arq, rel, raiz, rep):
         linha = texto[: m.start()].count("\n") + 1
         if tok.startswith("/Users/"):
             if not Path(tok).exists():
-                rep.aviso(f"{rel}:{linha} caminho absoluto não existe: `{tok}`")
+                rep.aviso(f"{rel}:{linha} absolute path does not exist: `{tok}`")
             continue
         if existe_em_ancestrais(tok, arq, raiz):
             continue
-        # só nome de arquivo de código: aceita se existir em qualquer subpasta do projeto
-        if tok.startswith(("/", ".")):  # rota de app ou extensão solta
+        if tok.startswith(("/", ".")):
             continue
         nome = tok.rstrip("/").split("/")[-1]
         if nome_existe_na_arvore(nome, arq.parent):
             continue
-        rep.aviso(f"{rel}:{linha} caminho citado não encontrado: `{tok}`")
+        rep.aviso(f"{rel}:{linha} quoted path not found: `{tok}`")
 
 
 def checar_linhas(arq, rel, raiz, rep):
     n = arq.read_text(encoding="utf-8", errors="replace").count("\n") + 1
     teto = teto_para(arq, raiz)
     if teto is not None and n > teto:
-        rep.erro(f"{rel} tem {n} linhas, teto declarado é {teto}")
+        rep.erro(f"{rel} has {n} lines, declared ceiling is {teto}")
     elif teto is None and n > AVISO_LINHAS:
-        rep.aviso(f"{rel} tem {n} linhas (acima de {AVISO_LINHAS}, considerar enxugar)")
+        rep.aviso(f"{rel} has {n} lines (above {AVISO_LINHAS}, consider trimming)")
 
 
 def checar_memoria(pasta, rep):
@@ -162,7 +159,7 @@ def checar_memoria(pasta, rep):
     nomes = {p.name for p in arquivos}
     if not indice.exists():
         if arquivos:
-            rep.erro(f"{pasta.parent.name}: {len(arquivos)} arquivo(s) sem MEMORY.md")
+            rep.erro(f"{pasta.parent.name}: {len(arquivos)} file(s) without MEMORY.md")
         return
     idx = indice.read_text(encoding="utf-8", errors="replace")
     ligados = set()
@@ -171,17 +168,17 @@ def checar_memoria(pasta, rep):
         ligados.add(alvo)
         if not (pasta / alvo).exists():
             linha = idx[: m.start()].count("\n") + 1
-            rep.erro(f"{pasta.parent.name}/MEMORY.md:{linha} link quebrado: {alvo}")
+            rep.erro(f"{pasta.parent.name}/MEMORY.md:{linha} broken link: {alvo}")
     for orfao in sorted(nomes - ligados):
-        rep.aviso(f"{pasta.parent.name}: {orfao} sem entrada no MEMORY.md")
+        rep.aviso(f"{pasta.parent.name}: {orfao} has no entry in MEMORY.md")
     for p in arquivos:
         t = p.read_text(encoding="utf-8", errors="replace")
         if not t.startswith("---") or "\nname:" not in t[:500]:
-            rep.aviso(f"{pasta.parent.name}/{p.name} sem frontmatter name:")
+            rep.aviso(f"{pasta.parent.name}/{p.name} has no frontmatter name:")
         for m in re.finditer(r"\[\[([^\]]+)\]\]", t):
             if not (pasta / f"{m.group(1)}.md").exists():
                 linha = t[: m.start()].count("\n") + 1
-                rep.aviso(f"{pasta.parent.name}/{p.name}:{linha} [[{m.group(1)}]] não existe")
+                rep.aviso(f"{pasta.parent.name}/{p.name}:{linha} [[{m.group(1)}]] does not exist")
 
 
 def nome_frontmatter(texto):
@@ -211,11 +208,11 @@ def checar_memoria_duplicada(pastas, rep):
     for arquivo, onde in sorted(por_arquivo.items()):
         if len(onde) > 1:
             avisados.add(tuple(sorted(onde)))
-            rep.aviso(f"memória duplicada entre pastas: {arquivo} em {', '.join(r for r, _ in onde)}")
+            rep.aviso(f"duplicated memory across folders: {arquivo} in {', '.join(r for r, _ in onde)}")
     for nome, onde in sorted(por_nome.items()):
         rotulos = {r for r, _ in onde}
         if len(rotulos) > 1 and tuple(sorted(onde)) not in avisados:
-            rep.aviso(f"memória duplicada entre pastas: {nome} em {', '.join(sorted(rotulos))}")
+            rep.aviso(f"duplicated memory across folders: {nome} in {', '.join(sorted(rotulos))}")
 
 
 def varrer_credenciais(arquivos, raiz, rep):
@@ -224,15 +221,15 @@ def varrer_credenciais(arquivos, raiz, rep):
         for n, linha in enumerate(arq.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
             for nome, rx in PADROES_CRED:
                 if rx.search(linha):
-                    rep.erro(f"{rel}:{n} possível credencial ({nome}), valor omitido")
+                    rep.erro(f"{rel}:{n} possible credential ({nome}), value omitted")
                     break
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--raiz", default=str(HOME / "Projects"))
+    ap = argparse.ArgumentParser(description="lint for the Claude working harness")
+    ap.add_argument("--root", default=str(HOME / "Projects"), help="projects root folder (default ~/Projects)")
     args = ap.parse_args()
-    raiz = Path(args.raiz).expanduser().resolve()
+    raiz = Path(args.root).expanduser().resolve()
     rep = Relatorio()
 
     claudes = achar_claude_md(raiz)
@@ -252,12 +249,12 @@ def main():
 
     varrer_credenciais(claudes + arquivos_mem, HOME, rep)
 
-    print(f"harness-lint: {len(claudes)} CLAUDE.md, {len(arquivos_mem)} arquivos de memória")
+    print(f"harness-lint: {len(claudes)} CLAUDE.md, {len(arquivos_mem)} memory files")
     for e in rep.erros:
-        print(f"ERRO  {e}")
+        print(f"ERROR   {e}")
     for a in rep.avisos:
-        print(f"AVISO {a}")
-    print(f"resultado: {len(rep.erros)} erro(s), {len(rep.avisos)} aviso(s)")
+        print(f"WARNING {a}")
+    print(f"result: {len(rep.erros)} error(s), {len(rep.avisos)} warning(s)")
     return 1 if rep.erros else 0
 
 
