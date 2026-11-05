@@ -35,7 +35,7 @@ python3 -I ~/.claude/scripts/gate.py --repo ~/code/my-service --slice F1 \
   --build "dotnet build" --test "dotnet test"
 ```
 
-Exit code is 0 when every check passes and 1 when any check fails. Runs go to `~/.claude/metrics/slices.jsonl` and failures to `~/.claude/retro/YYYY-MM.md`, unless `--metrics` and `--retro-dir` point elsewhere. See [examples/](examples/README.md).
+Exit code is 0 when every check passes and 1 when any check fails. Runs go to `~/.claude/metrics/slices.jsonl` and failures to `~/.claude/retro/YYYY-MM.md`, unless `--metrics` and `--retro-dir` point elsewhere. Since 0.2.0, `--model` and `--tool-version` record the coding-agent model and tool version in each metrics line (null when not given), so later logs can be compared across model releases. See [examples/](examples/README.md).
 
 Summarize the log:
 

@@ -2,7 +2,7 @@
 
 `slices.jsonl` holds the real gate runs recorded between 2026-10-15 and 2026-11-01, one JSON line per run. Slices were renamed S01..S22 and repositories R1..R4, in order of first appearance. File paths and per-line details were removed; only the failure reason is kept.
 
-Each line has `date`, `slice`, `repo`, `result` (PASS or FAIL), `failures` (any of `files`, `comments`, `secrets`) and, in the later runs, `details` with the reason of each failed check.
+Each line has `date`, `slice`, `repo`, `result` (PASS or FAIL), `failures` (any of `files`, `comments`, `secrets`) and, in the later runs, `details` with the reason of each failed check. No line in this log has `model` or `tool_version`: those fields were added to the gate in 0.2.0, after the measured period. The role agents ran on the Claude Code model aliases `fable` (business analyst, tech lead) and `sonnet` (developers, QA, UX); exact model versions were not recorded.
 
 ## Summary
 

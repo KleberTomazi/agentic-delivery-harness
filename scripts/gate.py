@@ -14,9 +14,12 @@ Checks, in this order:
 Usage: python3 -I ~/.claude/scripts/gate.py --repo <path> --slice <name>
         [--expected <file.txt>] [--build "<cmd>"] [--test "<cmd>"] [--no-build]
         [--metrics <file.jsonl>] [--retro-dir <folder>]
+        [--model <alias or id>] [--tool-version <text>]
 Exit code: 0 if every check passes, 1 if any check fails.
 Appends one line to ~/.claude/metrics/slices.jsonl (or --metrics) with date, slice, repo,
-result, failures and details (reason and up to 10 lines per failed check, secrets always masked).
+result, failures, details (reason and up to 10 lines per failed check, secrets always masked),
+model and tool_version (the coding-agent model and tool version used for the slice, as given
+on the command line; null when not given). Model versions were not logged before 0.2.0.
 On FAIL, appends one row per failed check to ~/.claude/retro/YYYY-MM.md (or --retro-dir),
 creating the month file with a header and table if it does not exist.
 """
@@ -376,7 +379,7 @@ def short_repo(repo):
         return repo.as_posix()
 
 
-def record(repo, slice_name, checks, metrics):
+def record(repo, slice_name, checks, metrics, model=None, tool_version=None):
     failed = [c for c in checks if not c.ok]
     entry = {
         "date": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -386,6 +389,8 @@ def record(repo, slice_name, checks, metrics):
         "failures": [c.name for c in failed],
         "details": {c.name: {"reason": c.reason, "lines": c.details[:MAX_DETAIL_LINES]}
                     for c in failed},
+        "model": model,
+        "tool_version": tool_version,
     }
     metrics.parent.mkdir(parents=True, exist_ok=True)
     with metrics.open("a", encoding="utf-8") as f:
@@ -432,6 +437,8 @@ def main():
     ap.add_argument("--no-build", action="store_true", help="skip build and test")
     ap.add_argument("--metrics", default=str(METRICS), help="JSONL file that receives one line per run")
     ap.add_argument("--retro-dir", default=str(RETRO_DIR), help="folder for the monthly retro files")
+    ap.add_argument("--model", help="coding-agent model alias or id used for the slice, recorded in the metrics line")
+    ap.add_argument("--tool-version", help="coding tool version used for the slice (for example the output of claude --version)")
     args = ap.parse_args()
 
     repo = Path(args.repo).expanduser().resolve()
@@ -463,7 +470,7 @@ def main():
         c.show()
     failures = [c.name for c in checks if not c.ok]
     print(f"result: {'FAIL (' + ', '.join(failures) + ')' if failures else 'PASS'}")
-    record(repo, args.slice, checks, Path(args.metrics).expanduser())
+    record(repo, args.slice, checks, Path(args.metrics).expanduser(), args.model, args.tool_version)
     append_retro(args.slice, checks, Path(args.retro_dir).expanduser())
     return 1 if failures else 0
 
